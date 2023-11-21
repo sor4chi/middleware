@@ -35,31 +35,20 @@ describe('Basic - params', () => {
   const ParamsSchema = z.object({
     id: z
       .string()
-      .transform((val, ctx) => {
-        const parsed = parseInt(val)
-        if (isNaN(parsed)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Not a number',
-          })
-          return z.NEVER
-        }
-        return parsed
-      })
+      .min(4)
       .openapi({
         param: {
           name: 'id',
           in: 'path',
         },
-        example: 123,
-        type: 'integer',
+        example: '12345',
       }),
   })
 
   const UserSchema = z
     .object({
-      id: z.number().openapi({
-        example: 123,
+      id: z.string().openapi({
+        example: '12345',
       }),
       name: z.string().openapi({
         example: 'John Doe',
@@ -69,6 +58,13 @@ describe('Basic - params', () => {
       }),
     })
     .openapi('User')
+
+  const HeadersSchema = z.object({
+    // Header keys must be in lowercase
+    authorization: z.string().openapi({
+      example: 'Bearer SECRET',
+    }),
+  })
 
   const ErrorSchema = z
     .object({
@@ -83,6 +79,7 @@ describe('Basic - params', () => {
     path: '/users/{id}',
     request: {
       params: ParamsSchema,
+      headers: HeadersSchema,
     },
     responses: {
       200: {
@@ -138,17 +135,21 @@ describe('Basic - params', () => {
   })
 
   it('Should return 200 response with correct contents', async () => {
-    const res = await app.request('/users/123')
+    const res = await app.request('/users/12345', {
+      headers: {
+        Authorization: 'Bearer TOKEN',
+      },
+    })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      id: 123,
+      id: '12345',
       age: 20,
       name: 'Ultra-man',
     })
   })
 
   it('Should return 400 response with correct contents', async () => {
-    const res = await app.request('/users/abc')
+    const res = await app.request('/users/123')
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ ok: false })
   })
@@ -164,7 +165,7 @@ describe('Basic - params', () => {
           User: {
             type: 'object',
             properties: {
-              id: { type: 'number', example: 123 },
+              id: { type: 'string', example: '12345' },
               name: { type: 'string', example: 'John Doe' },
               age: { type: 'number', example: 42 },
             },
@@ -183,10 +184,16 @@ describe('Basic - params', () => {
           get: {
             parameters: [
               {
-                schema: { type: 'integer', example: 123 },
+                schema: { type: 'string', example: '12345', minLength: 4 },
                 required: true,
                 name: 'id',
                 in: 'path',
+              },
+              {
+                schema: { type: 'string', example: 'Bearer SECRET' },
+                required: true,
+                name: 'authorization',
+                in: 'header',
               },
             ],
             responses: {
@@ -927,6 +934,9 @@ describe('With hc', () => {
       const res = await app.request('/posts', {
         method: 'POST',
         body: JSON.stringify({ bad: 'property' }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
       expect(res.status).toBe(400)
       expect(await res.json()).toEqual({
@@ -939,6 +949,9 @@ describe('With hc', () => {
       const res = await app.request('/books', {
         method: 'POST',
         body: JSON.stringify({ bad: 'property' }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
       expect(res.status).toBe(400)
       expect(await res.json()).toEqual({
@@ -994,5 +1007,142 @@ describe('It allows the response type to be Response', () => {
     const res = await app.request('/no-content')
     expect(res.status).toBe(204)
     expect(res.body).toBe(null)
+  })
+})
+
+describe('Path normalization', () => {
+  const createRootApp = () => {
+    const app = new OpenAPIHono()
+    app.doc('/doc', {
+      openapi: '3.0.0',
+      info: {
+        version: '1.0.0',
+        title: 'My API',
+      },
+    })
+    return app
+  }
+
+  const generateRoute = (path: string) => {
+    return createRoute({
+      path,
+      method: 'get',
+      responses: {
+        204: {
+          description: 'No Content',
+        },
+      },
+    })
+  }
+
+  const handler = (c) => c.body(null, 204)
+
+  describe('Duplicate slashes in the root path', () => {
+    const app = createRootApp()
+    const childApp = new OpenAPIHono()
+
+    childApp.openapi(generateRoute('/child'), handler)
+    app.route('/', childApp)
+
+    it('Should remove duplicate slashes', async () => {
+      const res = await app.request('/doc')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({
+        openapi: '3.0.0',
+        info: {
+          version: '1.0.0',
+          title: 'My API',
+        },
+        components: {
+          schemas: {},
+          parameters: {},
+        },
+        paths: {
+          '/child': {
+            get: {
+              responses: {
+                204: {
+                  description: 'No Content',
+                },
+              },
+            },
+          },
+        },
+      })
+    })
+  })
+
+  describe('Duplicate slashes in the child path', () => {
+    const app = createRootApp()
+    const childApp = new OpenAPIHono()
+    const grandchildApp = new OpenAPIHono()
+
+    grandchildApp.openapi(generateRoute('/granchild'), handler)
+    childApp.route('/', grandchildApp)
+    app.route('/api', childApp)
+
+    it('Should remove duplicate slashes', async () => {
+      const res = await app.request('/doc')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({
+        openapi: '3.0.0',
+        info: {
+          version: '1.0.0',
+          title: 'My API',
+        },
+        components: {
+          schemas: {},
+          parameters: {},
+        },
+        paths: {
+          '/api/granchild': {
+            get: {
+              responses: {
+                204: {
+                  description: 'No Content',
+                },
+              },
+            },
+          },
+        },
+      })
+    })
+  })
+
+  describe('Duplicate slashes in the trailing path', () => {
+    const app = createRootApp()
+    const childApp = new OpenAPIHono()
+    const grandchildApp = new OpenAPIHono()
+
+    grandchildApp.openapi(generateRoute('/'), handler)
+    childApp.route('/', grandchildApp)
+    app.route('/api', childApp)
+
+    it('Should remove duplicate slashes', async () => {
+      const res = await app.request('/doc')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({
+        openapi: '3.0.0',
+        info: {
+          version: '1.0.0',
+          title: 'My API',
+        },
+        components: {
+          schemas: {},
+          parameters: {},
+        },
+        paths: {
+          '/api': {
+            get: {
+              responses: {
+                204: {
+                  description: 'No Content',
+                },
+              },
+            },
+          },
+        },
+      })
+    })
   })
 })

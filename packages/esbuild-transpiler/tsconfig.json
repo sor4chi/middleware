@@ -1,13 +1,14 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "skipLibCheck": false,
     "rootDir": "./src",
-    "outDir": "./dist",
   },
   "include": [
     "src/**/*.ts"
   ],
-  "types": [
-    "@cloudflare/workers-types"
-  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
