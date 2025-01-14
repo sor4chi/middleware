@@ -1,0 +1,45 @@
+{
+  "name": "@hono/express",
+  "version": "0.0.1",
+  "description": "An Express middleware for mounting Hono apps",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsup ./src/index.ts --format esm,cjs --dts",
+    "publint": "publint",
+    "prerelease": "yarn build && arn publint",
+    "release": "yarn publish"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/honojs/middleware.git"
+  },
+  "homepage": "https://github.com/honojs/middleware",
+  "author": "codehex",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "peerDependencies": {
+    "express": "*",
+    "hono": "*"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.6",
+    "@types/supertest": "^6.0.2",
+    "express": "4.21.2",
+    "hono": "^4.6.16",
+    "supertest": "^7.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
